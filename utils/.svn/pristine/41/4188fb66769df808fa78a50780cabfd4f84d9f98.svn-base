@@ -1,0 +1,11 @@
+Node A:
+  - sendRequest 'hello, are you fine ?'
+  -
+    "3b070000001b68656c6c6f2c2061726520796f752066696e65203f/": "Node B"
+Node B:
+  - !!null
+  -
+    "/3b070000001968656c6c6f2c2061726520796f752066696e65203f": "Node C"
+Node C:
+   - !!null
+   -

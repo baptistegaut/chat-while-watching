@@ -1,0 +1,43 @@
+Init:
+  - "CALL sendLoginRequestOIE bob"
+  -
+    "00070001626f62/": "Node A"
+     
+Node A:
+  - ""
+  -
+    "/00040000": "Node B"
+
+Node B:
+  - ""
+  -
+    "/00040007": "Node C"
+
+Node C:
+  - ""
+  -
+    "00040000/": "Node D"
+
+Node D:
+  - ""
+  -
+    "/001b0015800c0c0c4e2000170333204461797320746f204b696c6c": "Node E"
+
+Node E:
+  - ""
+  -
+    "00040010/": "Node F"
+
+Node F:
+  - ""
+  -
+    "/000900260300626f62": "Node G"
+
+Node G:
+  - ""
+  -
+    "00040020/": "Node F"
+
+Final:
+   - ""
+   - {}

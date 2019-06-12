@@ -1,0 +1,232 @@
+import logging
+import sys
+
+sys.dont_write_bytecode = True
+logging.basicConfig()
+moduleLogger = logging.getLogger('c2w.main.movie')
+
+
+class c2wMovie(object):
+
+    def __init__(self, movieTitle, movieIpAddress, moviePort,
+                 movieFilePath=None, movieId=None, playVideo=True,
+                 moviePipeline=None, ):
+        """
+        :param string movieTitle: The movieTitle of the movie (must be unique).
+        :param moviePort: The moviePort used for the corresponding video flow.
+        :type moviePort: string or integer (it is converted to an integer
+                by the constructor)
+        :param movieIpAddress: The  *dotted decimal* (multicast) IP address
+                used for the corresponding video flow.
+        :type movieIpAddress: string
+        :param string movieFilePath: The movieFilePath of the corresponding
+                video file (used only in the server).
+        :param integer movieId: The numerical movieId of the movie (optional).
+        :param moviePipeline: A reference to the corresponding gstreamer
+                pipeline (used only in the server).
+        :param boolean playVideo: If ``False``` the server does not stream
+                the video flow for this movie (used only in the server).
+
+        Class storing all the information of a single movie.
+
+        Each instance has the following attributes:
+
+        .. attribute:: movieTitle
+
+            The name (title) of the movie (must be unique).
+
+        .. attribute:: moviePort
+
+            The moviePort used to send and receive the corresponding video
+            flow.
+
+        .. attribute:: movieIpAddress
+
+            The IP (multicast) address used to send and receive the video flow.
+
+        .. attribute:: movieId
+
+            The numerical movieId of the movie (optional, ``None`` by default).
+
+        .. attribute:: movieFilePath
+
+            The path of the file containing the video (used only in the
+            server).
+
+        .. attribute:: moviePipeline
+
+            A reference to the corresponding gstreamer moviePipeline (used only
+            in the server)
+
+        .. attribute:: playVideo
+
+            If ``False`` the server will not send the video flow corresponding
+            to this movie (used only in the server).
+
+        .. attribute:: movieDescription
+
+            A string describing the movie (optional, currently not used).
+
+        """
+        self.movieId = movieId
+        self.movieTitle = movieTitle
+        self.movieFilePath = movieFilePath
+        self.movieIpAddress = movieIpAddress
+        self.moviePort = int(moviePort)
+        self.moviePipeline = moviePipeline
+        self.movieDescription = ''
+        self.playVideo = playVideo
+
+
+class c2wMovieStore(object):
+    """
+    A list of movies.
+
+    .. warning::
+        Each element of the list *must* be an instance of
+        :py:class:`~c2w.main.movie.c2wMovie`
+
+    .. warning::
+        Each element (movie) must have a unique movieTitle.  If this is not the
+        case an exception is thrown.
+    """
+
+    def __init__(self):
+        #: A dictionary  storing all the movies.  The movie movieTitle is the
+        #: key.
+        self._movieDic = {}
+
+    def addMovie(self, movie):
+        if not isinstance(movie, c2wMovie):
+            moduleLogger.error("MOVIE_STORE_ERROR (addMovie): the movie" +
+                " parameter is not an instance of the c2wMovie class ")
+            raise TypeError('movie must be an instance of the c2wMovie class')
+        if movie.movieTitle in list(self._movieDic.keys()):
+            moduleLogger.error("MOVIE_STORE_ERROR (addMovie): the movie" +
+                " movieTitle %s is already in the dictionary",
+                movie.movieTitle)
+            raise ValueError("movie already in the dictionary")
+        else:
+            moduleLogger.debug("MOVIE_STORE (addMovie): " +
+                " title=%s, IP=%s, port=%s", movie.movieTitle,
+                movie.movieIpAddress, movie.moviePort)
+            self._movieDic[movie.movieTitle] = movie
+
+    def createAndAddMovie(self, movieTitle, movieIpAddress, moviePort,
+                          movieFilePath=None, movieId=None, noVideo=False,
+                          pipeline=None):
+        """ Create a new movie and add it to the dictionary """
+        if movieTitle in list(self._movieDic.keys()):
+            moduleLogger.error("MOVIE_STORE_ERROR (addMovie): the movie" +
+                " %s is already in the dictionary", movieTitle)
+            raise ValueError("movie already in the dictionary")
+        else:
+            movie = c2wMovie(movieTitle, movieIpAddress, moviePort,
+                             movieFilePath, movieId, noVideo, pipeline)
+            moduleLogger.debug("MOVIE_STORE (addMovie): " +
+                " title=%s, IP=%s, port=%s", movie.movieTitle,
+                movie.movieIpAddress, movie.moviePort)
+            self._movieDic[movie.movieTitle] = movie
+
+    def removeMovie(self, movieTitle):
+        """
+        Delete the movie whose title is movieTitle from the dictionary.
+        """
+        del self._movieDic[movieTitle]
+
+    def removeAllMovies(self):
+        """
+        Delete all the movies in the store.
+        """
+        self._movieDic = {}
+
+    def getMovieList(self):
+        """
+        Return a list with all the movies.
+        """
+        moviesList = []
+        for m in list(self._movieDic.values()):
+            moviesList.append(m)
+        return moviesList
+
+    """ The following methods could be used to modify the information of
+    a movie. They have just been added in case """
+
+    def getMoviePort(self, movieTitle):
+        """
+        Get the moviePort of a movie.
+        """
+        return self._movieDic[movieTitle].moviePort
+
+    def getMoviePath(self, movieTitle):
+        """
+        Get the moviePath of a movie.
+        """
+        return self._movieDic[movieTitle].movieFilePath
+
+    def getMovieByTitle(self, movieTitle):
+        """
+        Returns the movie with the given movieTitle.
+        """
+        try:
+            m = self._movieDic[movieTitle]
+        except KeyError:
+            m = None
+        return m
+
+    def movieExist(self, movieTitle):
+        """
+        Check whether a movie movieTitle exists.
+        """
+        return movieTitle in self._movieDic
+
+    def startStreamingMovie(self, movieTitle):
+        """
+        Start streaming the corresponding movie (used only in the server).
+        """
+
+        moduleLogger.info("MOVIE_STORE: started streaming movie: %s",
+                          movieTitle)
+        self.getMovieByTitle(movieTitle).moviePipeline.startStreaming()
+
+    def stopStreamingMovie(self, movieTitle):
+        """
+        Stop streaming the corresponding movie (used only in the server)
+        """
+
+        moduleLogger.info("MOVIE_STORE: Stopping streaming movie: %s",
+                          movieTitle)
+        self.getMovieByTitle(movieTitle).moviePipeline.stopStreaming()
+
+    def __iter__(self):
+        """
+        Needed to make the class iterable.
+
+        You can do something like the following:
+        .. code-block:: python
+            movieStore = c2wUserStore()
+            # add some users
+            movieStore.createAndAddMovie( ...)
+            for m in movieStore():
+                print(m.movieTitle)
+        """
+        return iter(list(self._movieDic.values()))
+
+    def getMovieById(self, movieId):
+        """
+        :param movieId: The numerical identifier of the user.
+        :type movieId: int
+        :returns: The corresponding user (instance of
+                  :py:class:`~c2w.main.movie.c2wMovie`), ``None`` if
+                  there is no user with the given name in the list.
+
+        .. note::
+            This function works correctly only if there is at most one
+            movie with the given id.  If multiple movies have the same id
+            this function will return only one of them.
+        """
+        r = [m for k, m in self._movieDic.items() if m.movieId == movieId]
+        if r:
+            return r[0]
+        else:
+            return None

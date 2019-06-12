@@ -1,0 +1,6 @@
+one_user_login_udp_server_test
+one_user_full_login_udp_server_test
+one_user_login_retransmit_udp_server_test
+one_user_gotowrongroom_udp_server_test
+one_user_hello_udp_server_test
+two_users_login_udp_server_test

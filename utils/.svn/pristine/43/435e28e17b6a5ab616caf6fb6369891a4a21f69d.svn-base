@@ -1,0 +1,23 @@
+Init:
+  - "CALL sendLoginRequestOIE romaric"
+  -
+    "2000000B726f6d61726963/": "Node A"
+
+Node A:
+  - ""
+  -
+    "/00000004": "Node B"
+
+Node B:
+  - ""
+  -
+    "/C000000D07726f6d6172696300": "Node C"
+
+Node C:
+  - ""
+  -
+    "00000004/": "Final"
+
+Final:
+   - ""
+   - {}

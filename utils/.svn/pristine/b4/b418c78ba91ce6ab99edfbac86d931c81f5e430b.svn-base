@@ -1,0 +1,23 @@
+Init:
+  - "CALL sendLoginRequestOIE françoisamédée"
+  -
+    "1100000000000015000000116672616ec3a76f6973616dc3a964c3a965/": "Node A"
+
+Node A:
+  - ""
+  -
+    "/1000000000000000": "Node B"
+
+Node B:
+  - ""
+  -
+    "/12809bf90000001600000100116672616ec3a76f6973616dc3a964c3a965": "Node C"
+
+Node C:
+  - ""
+  -
+    "10809bf900000000/": "Final"
+
+Final:
+   - ""
+   - {}

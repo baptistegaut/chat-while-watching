@@ -1,0 +1,320 @@
+import logging
+import sys
+
+sys.dont_write_bytecode = True
+logging.basicConfig()
+moduleLogger = logging.getLogger('c2w.main.client_proxy')
+
+
+def detectDuplicateElements(l):
+    """
+    :param l: list of tuples.
+
+    Returns True if l contains at least one element more than once.
+    """
+    l = [t[0] for t in l]
+    if len(l) == len(set(l)):
+        return True
+    else:
+        return False
+
+
+class c2wClientProxy(object):
+    """
+    This class is the interface between the c2wChatClientProtocol and
+    the controller (which is the controller of the client).
+
+    .. warning::
+        Your protocol implementation can interact with the user interface
+        only by calling the methods of this class.
+
+    .. note::
+        You cannot force the user interface to show (or hide) a certain window.
+        The controller takes care of this whenever appropriate.
+        For example, it hides the connecting window whenever your protocol
+        calls the :py:meth:`~c2w.main.client_proxy.c2wClientProxy.\
+initCompleteONE`.  Similarly it shows the appropriate window whenever your
+        protocol calls :py:meth:`~c2w.main.client_proxy.c2wClientProxy.\
+joinRoomOKONE`.
+    """
+    def __init__(self, controller):
+        """
+        :param controller: The corresponding controller instance.
+        """
+        moduleLogger.debug("c2wClientProxy constructor started")
+        self.controller = controller
+        self.chatClientProtocol = None
+
+    def registerChatClientProtocolInstance(self, chatClientProtocol):
+        """
+        DO NOT CALL THIS METHOD IN THE PROTOCOL IMPLEMENTATION.
+        
+        Called by the c2wChatClientProtocolFactory, in the case of TCP, and
+        by the controller, the case of UDP, to register
+        the c2wChatClientProtocol instance with the proxy.
+        """
+        self.chatClientProtocol = chatClientProtocol
+
+    def sendLoginRequestOIE(self, userName):
+        """
+        :param string userName: The user name that the user has typed.
+
+        In the case of a TCP connection, the controller calls this function
+        after the TCP connection with the server has been successfully
+        established.
+
+        In the case of UDP, the controller calls this function as soon
+        as the user clicks on the login button.
+
+        """
+        self.chatClientProtocol.sendLoginRequestOIE(userName)
+
+    def initCompleteONE(self, userList, movieList):
+        """
+        :param userList: The list of users in the system, see the
+               warning below.
+        :type userList: list of pairs (2-tuples)
+
+        :param movieList: The list of movies, see the warning below.
+        :type movieList: list of 3-tuples
+
+
+        Called by the client protocol when the initialization phase
+        is complete, that is when the client protocol has correctly received
+        the user list and the movie list.  The controller shows
+        the movie room after this function is called.
+
+         .. warning::
+            userList must be e a list of pairs of strings,
+            the first string is the user name and the second is either:
+            1) the movie title corresponding to the movie
+            room where the user is currently located or 2)
+            the value :py:class:`c2w.main.constants.ROOM_IDS.MAIN_ROOM` for
+            users in the main room and the value
+            :py:class:`c2w.main.constants.ROOM_IDS.MOVIE_ROOM` for users in
+            a movie room.
+            Using :py:class:`c2w.main.constants.ROOM_IDS.MAIN_ROOM` is the
+            only way to indicate that a user is in the main room.  Note that
+            if you use :py:class:`c2w.main.constants.ROOM_IDS.MOVIE_ROOM`
+            you will need update the user list before joining a movie room.
+            Otherwise the controller does not know the name of the users
+            in the same room.  (See
+            :py:meth:`~c2w.main.client_proxy.c2wClientProxy.setUserListONE`)
+
+         .. warning::
+            movieList must be a list of 3-tuples of strings,
+            where the first string is the title, the second is the
+            corresponding IP multicast address in dotted decimal notation
+            and the third is the port number for the video-stream.
+
+        """
+        moduleLogger.debug('initCompleteONE: received user list and' +
+                           ' movie list')
+        
+        assert detectDuplicateElements(userList)
+        assert detectDuplicateElements(movieList)
+        assert isinstance(userList, list)
+        assert isinstance(movieList, list)
+        assert all(isinstance(u, (tuple)) and len(u) == 2 for u in userList)
+        assert all(isinstance(u, (tuple)) and len(u) == 3 for u in movieList)
+        self.controller.initCompleteONE(userList, movieList)
+
+    def sendChatMessageOIE(self, message):
+        """
+        :param message: The text of the chat message.
+        :type message: string
+
+        Called **by the controller**  when the user
+        has decided to send a chat message
+
+        .. note::
+           This is the only function handling chat messages, irrespective
+           of the room where the user is.  Therefore it is up to the
+           client proctocol or to the server to make sure that this
+           message is handled properly, i.e., it is shown only by the
+           client(s) who are in the same room.
+        """
+        assert(isinstance(message, str))
+        self.chatClientProtocol.sendChatMessageOIE(message)
+
+    def sendJoinRoomRequestOIE(self, roomName):
+        """
+        :param roomName: The room name (or movie title.)
+
+        Called **by the controller**  when the user
+        has clicked on the watch button or the leave button,
+        indicating that she/he wants to change room.
+
+        .. warning:
+            The controller sets roomName to
+            :py:class:`c2w.main.constants.ROOM_IDS.MAIN_ROOM` when the user
+            wants to go back to the main room.
+        """
+        assert isinstance(roomName, str) or isinstance(roomName, type)
+        self.chatClientProtocol.sendJoinRoomRequestOIE(roomName)
+
+    def sendLeaveSystemRequestOIE(self):
+        """
+        Called **by the controller**  when the user
+        has clicked on the leave button in the main room.
+
+       """
+        self.chatClientProtocol.sendLeaveSystemRequestOIE()
+
+    def joinRoomOKONE(self):
+        """
+        Called **by the c2wChatClientProtocol** when it receives the OK message
+        for a join room request. The controller knows the location
+        of the client and will act accordingly (i.e., show the movie room,
+        or the main room or the login window).
+        """
+        self.controller.joinRoomOKONE()
+
+    def leaveSystemOKONE(self):
+        """
+        Called **by the c2wChatClientProtocol** when it receives the
+        acknowledgment (confirmation) of the leave system request.
+        """
+        self.controller.leaveSystemOKONE()
+
+    def chatMessageReceivedONE(self, rUserName, message):
+        """
+        :param rUserName: The user name of the remote user
+                 (the author of the message).
+        :type rUserName: string
+        :param message: The message text.
+        :type message: string
+
+        Called **by the c2wChatClientProtocol**  when the client
+        has received a chat message that has to be displayed in the
+        local room.
+        """
+        assert isinstance(rUserName, str)
+        assert isinstance(message, str)
+        self.controller.chatMessageReceivedONE(rUserName, message)
+
+    def updateMovieAddressPort(self, movieTitle, movieIpAddress, moviePort):
+        """
+        :param movieTitle: The title of the movie.
+        :type movieTitel: string
+        :param movieIpAddress: The dotted decimal notation of the IP address
+            where the video flow is received.
+        :type movieIpAddress: string
+        :param moviePort: The corresponding port number.
+        :type moviePort: string or integer
+
+        Updates the IP address and the port number associated with the
+        movie.
+
+        .. note::
+            It is not always necessary to use this method.  If the movie
+            list given to
+            :py:meth:`~c2w.main.client_proxy.c2wClientProxy.initCompleteONE`
+            contained already the correct IP address ant port number for
+            each movie, there is no need to use this method.
+
+        .. warning::
+            If used, this method MUST be called **before** the method
+            :py:meth:`~c2w.main.client_proxy.c2wClientProxy.joinRoomOKONE`
+            otherwise the streaming video will not be displayed.
+        """
+        assert isinstance(movieTitle, str)
+        assert isinstance(movieIpAddress, str)
+        assert isinstance(moviePort, str) or isinstance(moviePort, int)
+        self.controller.updateMovieAddressPort(movieTitle, movieIpAddress,
+                                               moviePort)
+
+    def userUpdateReceivedONE(self, userName, roomName):
+        """
+        :param userName: The user name of the user whose status is
+              being updated.
+        :param room number: The title of the movie corresponding
+           to where the user is now currently located.
+
+        .. warning::
+            This is only one of the methods that can be used to update
+            the user list.  It is up to the protocol implementation to
+            decide which function to use.  The other function is
+            :py:meth:`~c2w_main.c2w_client_proxy.c2wClientProxy.setUserListONE`
+            that can be used to re-set the *whole*
+            user list.
+
+        .. warning::
+           The c2wChatClientProtocol MUST use the value
+           :py:class:`c2w.main.constants.ROOM_IDS.MAIN_ROOM` to indicate that
+           a user is in the main room and the
+           :py:class:`c2w.main.constants.ROOM_IDS.OUT_OF_THE_SYSTEM_ROOM` to
+           indicate that a user has left the system.
+
+        Called **by the c2wChatClientProtocol** to update the status of a
+        *single* user (the one given in the `rUserName` parameter).
+        """
+        assert isinstance(userName, str)
+        assert isinstance(roomName, str) or isinstance(roomName, type)
+        self.controller.userUpdateReceivedONE(userName, roomName)
+
+    def setUserListONE(self, userList):
+        """
+        :param userList: The list of users in the system, see the
+               warning below.
+        :type userList: list of pairs (2-tuples)
+
+        .. warning::
+            This is only one of the methods that can be used to update
+            the user list.  It is up to the protocol implementation to
+            decide which function to use.  The other function is
+            :py:meth:`~c2w.main.client_proxy.c2wClientProxy.\
+userUpdateReceivedONE`, which can be used to update the
+            status of *only one* user.
+
+        .. warning::
+            userList must be e a list of pairs of strings,
+            the first string is the user name and the second is either:
+            1) the movie title corresponding to the movie
+            room where the user is currently located or 2)
+            the value :py:class:`c2w.main.constants.ROOM_IDS.MAIN_ROOM` for
+            users in the main room and the value
+            :py:class:`c2w.main.constants.ROOM_IDS.MOVIE_ROOM` for users in a
+            movie room.
+
+        .. warning::
+            Tue userList parameter must contain **at least** the users
+            in the current room.  For these users the second string
+            **must** be the **movie title** and not the generic
+            :py:class:`c2w.main.constants.ROOM_IDS.MOVIE_ROOM`.
+
+            The userList **can** also contain the location of **all** the
+            users in the system.
+
+            The controller knows the location of the client, and it will
+            update the corresponding window.
+
+        Called **by the c2wChatClientProtocol** to update the user list.
+        """
+        assert detectDuplicateElements(userList)
+        assert isinstance(userList, list)
+        assert all(isinstance(u, (tuple)) and len(u) == 2 for u in userList)
+        moduleLogger.debug('setUserListONE: received new user list')
+        self.controller.setUserListONE(userList)
+
+    def applicationQuit(self):
+        """
+        Called **by the c2wChatClientProtocol** if it wishes to close
+        the application (for example because it encountered an
+        unrecoverable error).  The protocol *must* call
+        this function in order to properly close the application.
+        """
+        self.controller.applicationQuit()
+
+    def connectionRejectedONE(self, msg):
+        """
+        :param string msg: A message explaining the error, this message
+               is shown to the user.
+
+        Called **by the c2wChatClientProtocol** whenever the server rejects
+        the connection, for example because the user name is already in
+        use.  The controller will display an error message and then the
+        login window again.
+        """
+        assert isinstance(msg, str)
+        self.controller.connectionRejectedONE(msg)

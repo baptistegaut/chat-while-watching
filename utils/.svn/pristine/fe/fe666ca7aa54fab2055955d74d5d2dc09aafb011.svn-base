@@ -1,0 +1,246 @@
+"""
+The Client GUI Model Module
+===========================
+"""
+
+import logging
+from c2w.main.user import c2wUserStore
+from c2w.main.movie import c2wMovieStore
+import sys
+
+sys.dont_write_bytecode = True
+
+from gi.repository import Gtk
+from c2w.main.constants import ROOM_IDS
+
+logging.basicConfig()
+moduleLogger = logging.getLogger('c2w.main.client_gui_model')
+
+
+class c2wClientGuiModel(object):
+    """
+    The model for the client, that is the user list and the
+    move list.
+
+    .. warning::
+        Only the c2wClientController is supposed to use this class and its
+        methods.  Do not use it in the protocol!
+    """
+    def __init__(self):
+        #: user list with all the information about a user
+        #: this is of type c2wUserStore
+        self._userStore = c2wUserStore()
+        #: movie list with all the information about a user
+        #: this is of type c2wMovieStore
+        self._movieStore = c2wMovieStore()
+        #: user list store for the gtk widget in the main room
+        #: this model has only an 'A' or an 'M' in the first column
+        #: and the user name in the second.
+        self._mainRoomUserListStore = Gtk.ListStore(str, str)
+        #: movie title list for the gtk widget in the main room
+        #: this model has only the movie title
+        self._mainRoomMovieListStore = Gtk.ListStore(str)
+        #: user list store for the gtk widget in the movie room
+        #: this model has only the user name
+        self._movieRoomUserListStore = Gtk.ListStore(str)
+        #: the room of this user
+        self._localUserRoom = ROOM_IDS.OUT_OF_THE_SYSTEM_ROOM
+
+    def setMainRoomUserListStore(self):
+        """
+        Set the user list store of the main room so that it has the
+        same users as the user list in the model (self._userStore).
+        """
+        self._mainRoomUserListStore.clear()
+        for u in self._userStore:
+            if u.userChatRoom == ROOM_IDS.MAIN_ROOM:
+                self._mainRoomUserListStore.append(["A", u.userName])
+            elif u.userChatRoom != ROOM_IDS.OUT_OF_THE_SYSTEM_ROOM:
+                self._mainRoomUserListStore.append(["M", u.userName])
+
+    def setMainRoomMovieListStore(self):
+        """
+        Set the movie list store of the main room so that it has
+        the same movies as the movie list in the model (self._movieStore).
+        """
+        self._mainRoomMovieListStore.clear()
+        for m in self._movieStore:
+            self._mainRoomMovieListStore.append([m.movieTitle])
+
+    def setMovieRoomUserListStore(self):
+        """
+        Set the user list store of the movie room whose name is
+        `self._localUserRoom` so that it has the
+        same users as the user list in the model (self.userStore).
+
+        """
+        self._movieRoomUserListStore.clear()
+        for u in self._userStore:
+            if u.userChatRoom == self._localUserRoom:
+                self._movieRoomUserListStore.append([u.userName])
+
+    def updateLocalUserRoom(self, newRoom):
+        """
+        :param newRoom: The new room of the local user.
+        :type newRoom: string or an instance of
+               :py:class:`c2w.main.constants.ROOM_IDS`
+
+        Update the room of the local user.
+        """
+        self._localUserRoom = newRoom
+        self.setMainRoomUserListStore()
+        self.setMovieRoomUserListStore()
+
+    def addUser(self, userName, userChatRoom):
+        """
+        :param userName: The name of the user.
+        :type userName: string
+        :param userChatRoom: The name of the corresponding chatroom.
+        :type userChatRoom: string or an instance of
+               :py:class:`c2w.main.constants.ROOM_IDS`
+
+        Add a user to the model.
+        """
+        self._userStore.createAndAddUser(userName, userChatRoom)
+        self.setMainRoomUserListStore()
+        self.setMovieRoomUserListStore()
+
+    def userExists(self, userName):
+        """
+        :param userName: The name of the user.
+        :type userName: string
+
+        Returns `True` if the user exists, `False` otherwise.
+        """
+        return self._userStore.userExist(userName)
+
+    def getUserByName(self, userName):
+        """
+        :param userName: The name of the user.
+        :type userName: string
+
+        Returns the user, if it exists, `False` otherwise.
+        """
+        return self._userStore.getUserByName(userName)
+
+    def removeUser(self, userName):
+        """
+        :param userName: The name of the user to be removed.
+        :type userName: string
+
+        Remove a single user.
+        """
+        self._userStore.removeUser(userName)
+        self.setMainRoomUserListStore()
+        self.setMovieRoomUserListStore()
+
+    def removeAllUsers(self):
+        """
+        Remove all the users.
+        """
+        self._userStore.removeAllUsers()
+        self._movieRoomUserListStore.clear()
+        self._mainRoomUserListStore.clear()
+
+    def updateUserChatroom(self, userName, newUserChatRoom):
+        """
+        :param userName: The name of the user who has changed room
+        :type userName: string
+        :param newUserChatRoom: The name of the new room.
+        :type newUserChatRoom: string or an instance of
+               :py:class:`c2w.main.constants.ROOM_IDS`
+        """
+
+        self._userStore.updateUserChatRoom(userName, newUserChatRoom)
+        self.setMainRoomUserListStore()
+        self.setMovieRoomUserListStore()
+
+    def addMovie(self, movieTitle, movieIpAddress, moviePort, movieId=None):
+        """
+        :param movieTitle: The title of the movie.
+        :type movieTitel: string
+        :param movieIpAddress: The dotted decimal notation of the IP address
+            where the video flow is received.
+        :type movieIpAddress: string
+        :param moviePort: The corresponding port number.
+        :type moviePort: string or integer
+
+        Add a movie with the corresponding information.
+        """
+        self._movieStore.createAndAddMovie(movieTitle, movieIpAddress,
+                                           moviePort, movieId=movieId)
+        self.setMainRoomMovieListStore()
+
+    def updateMovieAddressPort(self, movieTitle, movieIpAddress, moviePort):
+        """
+        :param movieTitle: The title of the movie.
+        :type movieTitel: string
+        :param movieIpAddress: The dotted decimal notation of the IP address
+            where the video flow is received.
+        :type movieIpAddress: string
+        :param moviePort: The corresponding port number.
+        :type moviePort: string or integer
+
+        Updates the IP address and the port number associated with the
+        movie.
+
+        .. warning::
+            This method MUST be called **before** the method
+            :py:meth:`~c2w.main.client_proxy.c2wClientProxy.joinRoomOKONE`
+            otherwise the streaming video will not be displayed.
+        """
+        m = self._movieStore.getMovieByTitle(movieTitle)
+        m.movieIpAddress = movieIpAddress
+        m.moviePort = moviePort
+        self.setMainRoomMovieListStore()
+
+    def getMovieByTitle(self, movieTitle):
+        """
+        :param movieTitle: The title of the movie.
+        :type movieTitel: string
+
+        Returns the corresponding movie, or `None` if it does not exist.
+        """
+        return self._movieStore.getMovieByTitle(movieTitle)
+
+    def getMovieAddrPort(self, movieTitle):
+        """
+        :param movieTitle: The title of the movie.
+        :type movieTitel: string
+
+        Returns the corresponding IP address and port, or `None` if
+        the movie does not exist.
+        """
+        m = self._movieStore.getMovieByTitle(movieTitle)
+        if m is None:
+            return m
+        else:
+            return (m.movieIpAddress, m.moviePort)
+
+    def removeAllMovies(self):
+        """
+        Remove all the movies.
+        """
+        self._movieStore.removeAllMovies()
+        self._mainRoomMovieListStore.clear()
+
+    def getMainRoomUserListStore(self):
+        """
+        Called by the view to get the main room user list store, which
+        is in the model.
+        """
+        return self._mainRoomUserListStore
+
+    def getMovieRoomUserListStore(self):
+        """
+        Called by the view to get the movie room user list store, which
+        is in the model.
+        """
+        return self._movieRoomUserListStore
+
+    def getMainRoomMovieListStore(self):
+        """
+        Called by the view to get the main room movie list store, which
+        is in the model.
+        """
+        return self._mainRoomMovieListStore

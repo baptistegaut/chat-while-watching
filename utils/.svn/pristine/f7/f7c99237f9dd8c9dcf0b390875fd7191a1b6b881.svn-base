@@ -1,0 +1,160 @@
+from twisted.trial import unittest
+from twisted.test import proto_helpers
+from twisted.internet import task
+
+from c2w.protocol.udp_chat_server import c2wUdpChatServerProtocol
+from c2w.main.server_model import c2wServerModel
+from c2w.main.server_proxy import c2wServerProxy
+import yaml
+import re
+import os
+import sys
+from collections import namedtuple
+import logging
+from twisted.internet import reactor
+
+logC2w = logging.getLogger('c2w')
+logC2w.setLevel(logging.DEBUG)
+
+MOVIES = [
+          (0X03, "3 Days to Kill", "0.0.0.0", 20000, "")
+          ]
+
+
+def get_id(s):
+    return int(s.split(':')[0].lstrip('#'))
+
+
+def get_edge(s):
+    return s.split(':')[1]
+
+def get_automata_path():
+    return os.path.join(os.getenv("STOCKRSMPATH"), "data", "c2w", "test")
+
+class c2wUdpChatServerTestCase(unittest.TestCase):
+
+    def _get_automata_path(self):
+        return os.path.join(os.getenv("STOCKRSMPATH"), "data", "c2w", "test")
+
+    def setUp(self):
+
+        self.automata_dir = os.path.dirname(__file__)
+        self.client_fsm = None
+        self.automata = None
+
+        self.clock = task.Clock()
+        reactor.callLater = self.clock.callLater
+
+        serverModel = c2wServerModel()
+        serverProxy = c2wServerProxy(serverModel)
+        serverProxy.initMovieStore(False, True)
+
+        serverProxy.removeAllMovies()
+        for m in MOVIES:
+            serverProxy.addMovie(m[1], m[2], m[3], m[4], m[0])
+        self.protocol = c2wUdpChatServerProtocol(serverProxy, 0)
+        self.transport = proto_helpers.FakeDatagramTransport()
+        self.protocol.makeConnection(self.transport)
+
+ 
+    def test_automata(self):
+
+#         self.client_fsm = yaml.load(open(os.path.join(self.automata_dir,
+#                                                       self.automata)))
+        self.client_fsm = yaml.load(open(self.automata))
+        automata_state = namedtuple('automata_state', 'action edges')
+
+        state = self.client_fsm['Init']
+        label = 'Init'
+        state = automata_state._make(state)  # now we can write t.action and t.edges
+        while True:
+            #print ("label is ", label)
+            assert(type(state.action) is str)
+            if state.action.startswith("F"):
+                forward_time = float(re.search(r"(F )([0-9]*\.?[0-9]*)",
+                                               state.action).
+                                     group(2))
+                #print "Forward time: ", forward_time
+                self.clock.advance(forward_time)
+
+            assert(type(state.edges) is dict)
+
+            success = False
+            client_id = None
+            bad_client_id = True
+            for numbered_edge, next_state in list(state.edges.items()):
+                edge_id, edge = get_id(numbered_edge), get_edge(numbered_edge)
+                #print "edge_id = ", edge_id
+                condition, action = edge.split('/')
+                if condition:
+                    try:
+                        v = self.transport.written[0]
+                        hex_v = "".join("{0:#0{1}x}".format(i, 4)[2:] for i in v[0])
+                        client_id = v[1][1] - 9999
+                        #print ("client_id = " + str(client_id))
+                        #print ("hex_v is " + hex_v)
+                        if edge_id == client_id:
+                            bad_client_id = False
+                            if hex_v == condition:
+                                print("Test passed")
+                                self.assertEqual(hex_v, condition)
+                                del self.transport.written[0]
+                                success = True
+                            else:
+                                failed_condition = condition
+                                failed_hex_v = hex_v
+                    except IndexError:
+                        pass #  we should fail here may be ? it should simplify the code (remove the need for client_id variable initialized to None )... TO SEE
+                if ((action and not condition) or (action and success)):
+                    s = bytes()
+                    for i in range(0, len(action), 2):
+                        s = s + bytes([int(action[i: i + 2], 16)])
+                    #print ("edge_id = " + str(edge_id))
+                    #print ('action is ' + action)
+                    self.protocol.datagramReceived(s, ("127.0.0.1",
+                                                       9999 + edge_id))
+                    state = automata_state._make(self.client_fsm[next_state])
+                    label = next_state
+                    break
+                if not action and success:
+                    state = automata_state._make(self.client_fsm[next_state])
+                    label = next_state
+                    break
+            else:
+                if label == "Final":
+                    print("Rock'n Roll !")
+                    pending = reactor.getDelayedCalls()
+                    #active = bool(pending)
+                    for p in pending:
+                        if p.active():
+                            p.cancel()
+                    return
+
+                if client_id is not None:
+                    if not bad_client_id:
+                        self.assertEqual(failed_hex_v, failed_condition)
+                    else:
+                        self.assertFalse(bad_client_id, "Bad client identification")
+                else:
+                    # we were expected something from the server ...
+                    pending = reactor.getDelayedCalls()
+                    #active = bool(pending)
+                    for p in pending:
+                        if p.active():
+                            p.cancel()
+                    #return
+                    self.fail("Well, this is embarrassing. I (the test)\
+                        was expecting data from your protocol and nothing is\
+                        available")
+
+with open(os.path.join(get_automata_path(), "udp_server_tests_list.txt")) as tests_list:
+    tests = list(l.rstrip('\n') for l in tests_list.readlines())
+        
+for t in tests:
+    
+    def test_generic(self, t=t):
+        self.automata = os.path.join(get_automata_path(), t + ".yaml")
+        self.test_automata()
+            
+    setattr(c2wUdpChatServerTestCase, 'test_' + t, test_generic)
+    

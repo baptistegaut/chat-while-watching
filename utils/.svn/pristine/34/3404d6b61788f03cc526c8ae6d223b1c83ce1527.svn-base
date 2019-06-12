@@ -1,0 +1,186 @@
+from twisted.trial import unittest
+from twisted.test import proto_helpers
+from twisted.internet import task
+
+from c2w.protocol.tcp_chat_server import c2wTcpChatServerProtocol
+from c2w.main.server_model import c2wServerModel
+from c2w.main.server_proxy import c2wServerProxy
+import yaml
+import re
+import os
+import sys
+from collections import namedtuple
+import logging
+from twisted.internet import reactor
+
+import random
+def mygetrandbits(k):
+    return 8428537
+
+random.getrandbits=mygetrandbits
+
+#logC2w = logging.getLogger('c2w')
+#logC2w.setLevel(logging.DEBUG)
+
+MOVIES = [
+          (0X03, "3 Days to Kill", "128.12.12.12", 20000, "")
+          ]
+
+def get_id(s):
+    return int(s.split(':')[0].lstrip('#'))
+
+
+def get_edge(s):
+    return s.split(':')[1]
+
+
+def get_automata_path():
+    return os.path.join(os.getenv("STOCKRSMPATH"), "data", "c2w", "test")
+
+class c2wTcpChatServerTestCase(unittest.TestCase):
+
+    def init_clients(self, clients):
+
+        for c in clients:
+            transport = proto_helpers.StringTransport()
+            protocol = c2wTcpChatServerProtocol(self.serverProxy,
+                                                "127.0.0.1",
+                                                9999 + c)
+            self.protocols[c] = (transport, protocol)
+            protocol.makeConnection(transport)
+
+    def setUp(self):
+
+        self.automata_dir = os.path.dirname(__file__)
+        self.client_fsm = None
+        self.automata = None
+
+        self.clock = task.Clock()
+        reactor.callLater = self.clock.callLater
+
+        self.serverModel = c2wServerModel()
+        self.serverProxy = c2wServerProxy(self.serverModel)
+        self.serverProxy.initMovieStore(False, True)
+
+        self.serverProxy.removeAllMovies()
+        for m in MOVIES:
+            self.serverProxy.addMovie(m[1], m[2], m[3], m[4], m[0])
+
+        self.split = False
+        self.two_by_two = False
+        self.protocols = {}
+
+    def test_automata(self):
+
+#         self.client_fsm = yaml.load(open(os.path.join(self.automata_dir,
+#                                                       self.automata)))
+        self.client_fsm = yaml.load(open(self.automata))
+        clients = set()
+        for v in list(self.client_fsm.values()):
+            action, edges = v
+            if edges:
+                for e in list(edges.items()):
+                    client_id = get_id(e[0])
+                    clients.add(client_id)
+
+        self.init_clients(clients)
+        automata_state = namedtuple('automata_state', 'action edges')
+
+        state = self.client_fsm['Init']
+        label = 'Init'
+        state = automata_state._make(state)  # now we can write t.action and t.edges
+        while True:
+            assert(type(state.action) is str)
+            if state.action.startswith("F"):
+                forward_time = float(re.search(r"(F )([0-9]*\.?[0-9]*)",
+                                               state.action).
+                                     group(2))
+                self.clock.advance(forward_time)
+
+            assert(type(state.edges) is dict)
+
+            success = False
+            client_id = None
+            bad_client_id = True
+            for numbered_edge, next_state in list(state.edges.items()):
+                edge_id, edge = get_id(numbered_edge), get_edge(numbered_edge)
+                condition, action = edge.split('/')
+                if condition:
+                    v = self.protocols[edge_id][0].value()
+                    hex_v = "".join("{0:#0{1}x}".format(i, 4)[2:] for i in v)
+                    if hex_v:
+                        bad_client_id = False
+                        client_id = edge_id
+                        if hex_v == condition:
+                            print ("Test passed")
+                            self.assertEqual(hex_v, condition)
+                            self.protocols[edge_id][0].clear()
+                            success = True
+                        else:
+                            failed_condition = condition
+                            failed_hex_v = hex_v
+                    else:
+                        pass  # ??
+                if ((action and not condition) or (action and success)):
+                    s = bytes()
+                    for i in range(0, len(action), 2):
+                        s = s + bytes([int(action[i: i + 2], 16)])
+                    if self.split:
+                        if self.two_by_two:
+                            for i in range(0, len(s), 2):
+                                #print ("sending ", s[i:i+2])
+                                self.protocols[edge_id][1].dataReceived(bytes(s[i:i+2]))
+                        else:
+                            for s_b in s:
+                                self.protocols[edge_id][1].dataReceived(bytes([s_b]))
+                    else:
+                        self.protocols[edge_id][1].dataReceived(s)
+                    state = automata_state._make(self.client_fsm[next_state])
+                    label = next_state
+                    break
+                if not action and success:
+                    state = automata_state._make(self.client_fsm[next_state])
+                    label = next_state
+                    break
+            else:
+                if label == "Final":
+                    print("Rock'n Roll !")
+                    pending = reactor.getDelayedCalls()
+                    for p in pending:
+                        if p.active():
+                            p.cancel()
+                    return
+
+                if client_id is not None:
+                    if not bad_client_id:
+                        pending = reactor.getDelayedCalls()
+                        for p in pending:
+                            if p.active():
+                                p.cancel()
+                        self.assertEqual(failed_hex_v, failed_condition)
+                    else:
+                        self.assertFalse(bad_client_id, "Bad client identification")
+                else:
+                    pending = reactor.getDelayedCalls()
+                    for p in pending:
+                        if p.active():
+                            p.cancel()
+                    self.fail("Well, this is embarrassing. I (the test)\
+                        was expecting data from your protocol and nothing is\
+                        available")
+                    
+with open(os.path.join(get_automata_path(), "tcp_server_tests_list.txt")) as tests_list:
+    tests = list(l.rstrip('\n') for l in tests_list.readlines())
+        
+for t in tests:
+    
+    def test_generic(self, t=t):
+        self.automata = os.path.join(get_automata_path(), t + ".yaml")
+        self.split = False
+        self.two_by_two = False
+        if 'framing' in t and ('1by1' in t or '2by2' in t):
+            self.split = True
+            self.two_by_two = '2by2' in t
+        self.test_automata()
+
+    setattr(c2wTcpChatServerTestCase, 'test_' + t, test_generic)

@@ -1,0 +1,18 @@
+Init:
+  - "CALL sendLoginRequestOIE bob"
+  -
+    "00070001626f62/": "Node A"
+     
+Node A:
+  - ""
+  -
+    "/0004000000040007": "Node C"
+
+Node C:
+  - ""
+  -
+    "00040000/": "Final"
+
+Final:
+   - ""
+   - {}

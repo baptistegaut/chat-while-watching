@@ -1,0 +1,39 @@
+Init:
+  - "CALL sendLoginRequestOIE françoisamédée"
+  -
+    "1100000000000015000000116672616ec3a76f6973616dc3a964c3a965/": "Node A"
+
+Node A:
+  - ""
+  -
+    "/1000000000000000": "Node B"
+
+Node B:
+  - ""
+  -
+    "/12809bf90000001600000100116672616ec3a76f6973616dc3a964c3a965": "Node C"
+
+Node C:
+  - ""
+  -
+    "10809bf900000000/": "Node D"
+
+Node D:
+  - ""
+  -
+    "/14809bf900010048000100094d61696e20526f6f6d0000000000000001000100116672616ec3a76f6973616dc3a964c3a96500010003000e33204461797320746f204b696c6c800c0c0c4e2000000000": "Node E"
+
+Node E:
+  - ""
+  -
+    "10809bf900010000/": "Node F"
+
+Node F:
+  - "CALL sendChatMessageOIE belle journée à Brest"
+  -
+    "16809bf90001001b0001001762656c6c65206a6f75726ec3a96520c3a0204272657374/": "Final"
+    
+Final:
+   - ""
+   - {}
+
